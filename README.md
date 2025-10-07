@@ -1,3 +1,3 @@
 # zaluproekt
 
-sudo rm -rf ./Maksim_gey
+sudo rm -rf ./Vadim_gay
