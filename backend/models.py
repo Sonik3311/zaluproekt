@@ -1,19 +1,20 @@
 from pydantic import BaseModel
+from board import Pixel
 
 
-class BaseResponse(BaseModel):
-    response: int
+class PixelBoardResponse(BaseModel):
+    pixels: list[Pixel]
 
 
-class BasePixel(BaseModel):
+class BasePixelPos(BaseModel):
     x: int
     y: int
 
 
-class BasePixelRange(BasePixel):
+class BasePixelPosRange(BasePixelPos):
     x_end: int
     y_end: int
 
 
-class ColorPixelRequestModel(BasePixel):
+class ColorPixelRequestModel(BasePixelPos):
     color: int
