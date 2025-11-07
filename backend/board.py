@@ -43,7 +43,7 @@ class Board:
         pixels: list[Pixel] = []
         for i in range(x, x_end):
             for j in range(y, y_end):
-                pixels.append(self._board[(j + y) * self.width + (i + x)])
+                pixels.append(self._board[(j) * self.width + (i)])
 
         return pixels
 
