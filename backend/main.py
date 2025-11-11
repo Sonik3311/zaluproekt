@@ -129,4 +129,4 @@ async def message_stream(request: Request, response: Response):
 server.mount("/site", StaticFiles(directory="../frontend", html=True), name="frontend")
 
 if __name__ == "__main__":
-    uvicorn.run("main:server", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("main:server", host="127.0.0.1", port=8080, reload=True)
