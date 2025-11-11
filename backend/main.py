@@ -1,10 +1,12 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.staticfiles import StaticFiles
 from sse_starlette.sse import EventSourceResponse
 import asyncio
 import uvicorn
 import uuid
 import json
 from jsonenchanced import EnhancedJSONEncoder
+from collections import defaultdict
 from models import (
     ColorPixelRequestModel,
     PixelBoardResponse,
@@ -20,6 +22,7 @@ config = Config("config.ini")
 board = Board(config.board_width, config.board_height, config.palettes[config.color_palette_id])
 server = FastAPI()
 
+
 @server.get("/settings", response_model=SettingsResponse)
 def get_board_size():
     return {
@@ -32,7 +35,7 @@ def get_board_size():
 
 
 @server.post("/ColorPixel")
-def set_pixel(req: ColorPixelRequestModel):
+async def set_pixel(req: ColorPixelRequestModel):
     if (req.x - config.board_width >= 0) or (req.y - config.board_height >= 0):
         raise HTTPException(status_code=400, detail="Invalid pixel position")
 
@@ -42,6 +45,18 @@ def set_pixel(req: ColorPixelRequestModel):
     # TODO: Сверка с БД по времени последнего закрашивания
 
     board.set_pixel(req.x, req.y, req.color)
+
+
+    def new_messages():
+        changes = board.get_changes()
+        if len(changes) > 0:
+            board.clear_changes()
+            return len(changes) > 0, json.dumps(changes, cls=EnhancedJSONEncoder)
+        return False, ""
+
+    _, data = new_messages()
+
+    await broadcast_to_all(data)
 
 
 @server.get("/GetPixels/{x}/{y}/{x_end}/{y_end}", response_model=PixelBoardResponse)
@@ -63,38 +78,55 @@ def get_pixels(x: int, y: int, x_end: int, y_end: int):
         "pixels": pixels,
     }
 
+event_queues = defaultdict(set)
+
+async def broadcast_to_all(message: str):
+    for queue in event_queues["all"]:
+        await queue.put(message)
+
 
 # SSE соединение.
 # Отвечает за стриминг изменений клиентам в реальном времени
 @server.get('/stream')
-async def message_stream(request: Request):
+async def message_stream(request: Request, response: Response):
     # Функция проверки новых сообщений
-    def new_messages():
-        changes = board.get_changes()
-        if len(changes) > 0:
-            board.clear_changes()
-            return len(changes) > 0, json.dumps(changes, cls=EnhancedJSONEncoder)
-        return False, ""
+    queue = asyncio.Queue()
 
     async def event_generator():
-        while True:
-            # If client was closed the connection
-            if await request.is_disconnected():
-                break
+        event_queues["all"].add(queue)
+        try:
 
-            # Checks for new messages and return them to client if any
-            has_changes, new_data = new_messages()
-            if has_changes:
-                yield {
-                        "event": "update",
-                        "id": str(uuid.uuid4()),
-                        "retry": RETRY_TIMEOUT,
-                        "data": new_data
-                }
+            while True:
+                # If client was closed the connection
+                if await request.is_disconnected():
+                    print('disconnected')
+                    break
 
-            await asyncio.sleep(STREAM_DELAY)
+                # Checks for new messages and return them to client if any
+                new_data = await queue.get()
+
+                #has_changes, new_data = new_messages()
+                if new_data:
+                    yield {
+                            "event": "update",
+                            "id": str(uuid.uuid4()),
+                            "retry": RETRY_TIMEOUT,
+                            "data": new_data
+                    }
+                response.headers['Content-type'] = "text/event-stream"
+                response.headers['Cache-Control'] = "no-cache"
+                response.headers['Connection'] = 'keep-alive'
+
+                await asyncio.sleep(STREAM_DELAY)
+        except asyncio.CancelledError:
+            event_queues["all"].discard(queue)
+        finally:
+            event_queues["all"].discard(queue)
+
 
     return EventSourceResponse(event_generator())
+
+server.mount("/site", StaticFiles(directory="../frontend", html=True), name="frontend")
 
 if __name__ == "__main__":
     uvicorn.run("main:server", host="127.0.0.1", port=8000, reload=True)
