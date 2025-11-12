@@ -1,6 +1,8 @@
+from types import coroutine
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from sse_starlette.sse import EventSourceResponse
+from contextlib import asynccontextmanager
 import asyncio
 import uvicorn
 import uuid
@@ -15,12 +17,20 @@ from models import (
 from config import Config
 from board import Board
 
-STREAM_DELAY = 1  # second
+STREAM_DELAY = 0.5  # second
 RETRY_TIMEOUT = 15000  # millisecond
+
+broadcast_task = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global broadcast_task
+    broadcast_task = asyncio.create_task(periodic_broadcast())
+    yield
 
 config = Config("config.ini")
 board = Board(config.board_width, config.board_height, config.palettes[config.color_palette_id])
-server = FastAPI()
+server = FastAPI(lifespan=lifespan)
 
 
 @server.get("/settings", response_model=SettingsResponse)
@@ -47,18 +57,6 @@ async def set_pixel(req: ColorPixelRequestModel):
     board.set_pixel(req.x, req.y, req.color)
 
 
-    def new_messages():
-        changes = board.get_changes()
-        if len(changes) > 0:
-            board.clear_changes()
-            return len(changes) > 0, json.dumps(changes, cls=EnhancedJSONEncoder)
-        return False, ""
-
-    _, data = new_messages()
-
-    await broadcast_to_all(data)
-
-
 @server.get("/GetPixels/{x}/{y}/{x_end}/{y_end}", response_model=PixelBoardResponse)
 def get_pixels(x: int, y: int, x_end: int, y_end: int):
     print(x, x_end, y, y_end)
@@ -80,10 +78,9 @@ def get_pixels(x: int, y: int, x_end: int, y_end: int):
 
 event_queues = defaultdict(set)
 
-async def broadcast_to_all(message: str):
+async def broadcast_to_all(data):
     for queue in event_queues["all"]:
-        await queue.put(message)
-
+        await queue.put(data)
 
 # SSE соединение.
 # Отвечает за стриминг изменений клиентам в реальном времени
@@ -91,6 +88,7 @@ async def broadcast_to_all(message: str):
 async def message_stream(request: Request, response: Response):
     # Функция проверки новых сообщений
     queue = asyncio.Queue()
+
 
     async def event_generator():
         event_queues["all"].add(queue)
@@ -102,10 +100,7 @@ async def message_stream(request: Request, response: Response):
                     print('disconnected')
                     break
 
-                # Checks for new messages and return them to client if any
                 new_data = await queue.get()
-
-                #has_changes, new_data = new_messages()
                 if new_data:
                     yield {
                             "event": "update",
@@ -113,6 +108,7 @@ async def message_stream(request: Request, response: Response):
                             "retry": RETRY_TIMEOUT,
                             "data": new_data
                     }
+
                 response.headers['Content-type'] = "text/event-stream"
                 response.headers['Cache-Control'] = "no-cache"
                 response.headers['Connection'] = 'keep-alive'
@@ -128,5 +124,24 @@ async def message_stream(request: Request, response: Response):
 
 server.mount("/site", StaticFiles(directory="../frontend", html=True), name="frontend")
 
+async def periodic_broadcast():
+    def new_messages():
+        changes = board.get_changes()
+        if len(changes) > 0:
+            board.clear_changes()
+            return len(changes) > 0, json.dumps(changes, cls=EnhancedJSONEncoder)
+        return False, ""
+
+    while True:
+        try:
+            await asyncio.sleep(STREAM_DELAY)
+            has_changes, new_data = new_messages()
+            if has_changes:
+                await broadcast_to_all(new_data)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"Broadcast error: {e}")
+
 if __name__ == "__main__":
-    uvicorn.run("main:server", host="127.0.0.1", port=8080, reload=True)
+    uvicorn.run("main:server", host="127.0.0.1", port=8000, reload=True)
