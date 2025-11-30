@@ -3,8 +3,6 @@ from dependencies import pixel_board, config
 from internal.models import SettingsResponse, ColorPixelRequestModel, PixelBoardResponse
 from internal.jsonenchanced import EnhancedJSONEncoder
 
-from internal.board import Pixel
-
 router = APIRouter(
     prefix="/api",
     tags=["board"]
@@ -34,7 +32,6 @@ async def set_pixel(req: ColorPixelRequestModel):
 
 @router.get("/GetPixels/{x}/{y}/{x_end}/{y_end}", response_model=PixelBoardResponse)
 def get_pixels(x: int, y: int, x_end: int, y_end: int):
-    print(x, x_end, y, y_end)
     if (x_end - config.board_width >= 0) or (y_end - config.board_height >= 0):
         raise HTTPException(status_code=400, detail="Invalid pixel end range")
 

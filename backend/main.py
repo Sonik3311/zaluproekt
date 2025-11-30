@@ -1,8 +1,8 @@
 from sys import path as syspath
 import argparse
 
-syspath.append("../new_back/internal")
-syspath.append("../new_back/routers")
+syspath.append("../backend/internal")
+syspath.append("../backend/routers")
 
 import routers.router_board as router_board
 import routers.router_broadcast as router_broadcast
