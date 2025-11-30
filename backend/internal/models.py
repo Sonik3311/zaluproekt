@@ -3,7 +3,6 @@ from board import Pixel
 from color_palettes import ColorPalette
 
 
-
 class PixelBoardResponse(BaseModel):
     pixels: list[Pixel]
 

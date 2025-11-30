@@ -1,7 +1,7 @@
 /* ===========================
    Конфигурация и состояние
    =========================== */
-const API_BASE_URL = "http://localhost:8080"; // Твой сервер на порту 8080
+const API_BASE_URL = "http://localhost:8080/api"; // Твой сервер на порту 8080
 
 const API_URLS = {
   SETTINGS: API_BASE_URL + "/settings",
@@ -208,7 +208,7 @@ function connectToStream() {
             updatePixelFromStream(
               pixelChange.x,
               pixelChange.y,
-              pixelChange.color_id,
+              pixelChange.color.color_id,
             );
           });
         }

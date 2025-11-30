@@ -1,147 +1,54 @@
-from types import coroutine
-from fastapi import FastAPI, HTTPException, Request, Response
+from sys import path as syspath
+import argparse
+
+syspath.append("../new_back/internal")
+syspath.append("../new_back/routers")
+
+import routers.router_board as router_board
+import routers.router_broadcast as router_broadcast
+import routers.router_site as router_site
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from sse_starlette.sse import EventSourceResponse
-from contextlib import asynccontextmanager
-import asyncio
+from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
-import uuid
-import json
-from jsonenchanced import EnhancedJSONEncoder
-from collections import defaultdict
-from models import (
-    ColorPixelRequestModel,
-    PixelBoardResponse,
-    SettingsResponse,
-)
-from config import Config
-from board import Board
-
-STREAM_DELAY = 0.5  # second
-RETRY_TIMEOUT = 15000  # millisecond
-
-broadcast_task = None
+from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global broadcast_task
-    broadcast_task = asyncio.create_task(periodic_broadcast())
+    await router_broadcast.create_broadcast_task()
     yield
 
-config = Config("config.ini")
-board = Board(config.board_width, config.board_height, config.palettes[config.color_palette_id])
 server = FastAPI(lifespan=lifespan)
 
+origins = [
+    "http://localhost",
+    "http://localhost:8080",
+]
 
-@server.get("/settings", response_model=SettingsResponse)
-def get_board_size():
-    return {
-        "board_size" : {
-            "x" : board.width,
-            "y" : board.height
-        },
-        "palette": board.color_palette
-    }
-
-
-@server.post("/ColorPixel")
-async def set_pixel(req: ColorPixelRequestModel):
-    if (req.x - config.board_width >= 0) or (req.y - config.board_height >= 0):
-        raise HTTPException(status_code=400, detail="Invalid pixel position")
-
-    if (req.color >= len(board.color_palette.colors)):
-        raise HTTPException(status_code=400, detail="Invalid color ID")
-
-    # TODO: Сверка с БД по времени последнего закрашивания
-
-    board.set_pixel(req.x, req.y, req.color)
+server.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
-@server.get("/GetPixels/{x}/{y}/{x_end}/{y_end}", response_model=PixelBoardResponse)
-def get_pixels(x: int, y: int, x_end: int, y_end: int):
-    print(x, x_end, y, y_end)
-    if (x_end - config.board_width >= 0) or (y_end - config.board_height >= 0):
-        raise HTTPException(status_code=400, detail="Invalid pixel end range")
+server.include_router(router_board.router)
+server.include_router(router_broadcast.router)
+server.include_router(router_site.router)
 
-    if (x - config.board_width >= 0) or (y - config.board_height >= 0):
-        raise HTTPException(status_code=400, detail="Invalid pixel start range")
-
-    if (x >= x_end) or (y >= y_end):
-        raise HTTPException(status_code=400, detail="Invalid pixel range")
-
-    print("starting fetch")
-    pixels = board.get_pixel_range(x, y, x_end, y_end)
-    print("end fetch")
-    return {
-        "pixels": pixels,
-    }
-
-event_queues = defaultdict(set)
-
-async def broadcast_to_all(data):
-    for queue in event_queues["all"]:
-        await queue.put(data)
-
-# SSE соединение.
-# Отвечает за стриминг изменений клиентам в реальном времени
-@server.get('/stream')
-async def message_stream(request: Request, response: Response):
-    # Функция проверки новых сообщений
-    queue = asyncio.Queue()
-
-
-    async def event_generator():
-        event_queues["all"].add(queue)
-        try:
-
-            while True:
-                # If client was closed the connection
-                if await request.is_disconnected():
-                    print('disconnected')
-                    break
-
-                new_data = await queue.get()
-                if new_data:
-                    yield {
-                            "event": "update",
-                            "id": str(uuid.uuid4()),
-                            "retry": RETRY_TIMEOUT,
-                            "data": new_data
-                    }
-
-                response.headers['Content-type'] = "text/event-stream"
-                response.headers['Cache-Control'] = "no-cache"
-                response.headers['Connection'] = 'keep-alive'
-
-                await asyncio.sleep(STREAM_DELAY)
-        except asyncio.CancelledError:
-            event_queues["all"].discard(queue)
-        finally:
-            event_queues["all"].discard(queue)
-
-
-    return EventSourceResponse(event_generator())
-
-server.mount("/site", StaticFiles(directory="../frontend", html=True), name="frontend")
-
-async def periodic_broadcast():
-    def new_messages():
-        changes = board.get_changes()
-        if len(changes) > 0:
-            board.clear_changes()
-            return len(changes) > 0, json.dumps(changes, cls=EnhancedJSONEncoder)
-        return False, ""
-
-    while True:
-        try:
-            await asyncio.sleep(STREAM_DELAY)
-            has_changes, new_data = new_messages()
-            if has_changes:
-                await broadcast_to_all(new_data)
-        except asyncio.CancelledError:
-            break
-        except Exception as e:
-            print(f"Broadcast error: {e}")
+server.mount("/site", StaticFiles(directory="../frontend", html=True), name="front")
 
 if __name__ == "__main__":
-    uvicorn.run("main:server", host="127.0.0.1", port=8000, reload=True)
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--host", type=str)
+    parser.add_argument("--port", type=int)
+    parser.add_argument("--hotreload", action="store_true")
+    args = parser.parse_args()
+
+    default_host = "127.0.0.1"
+    default_port = 8080
+
+    uvicorn.run("main:server", host=args.host or default_host, port=args.port or default_port, reload=args.hotreload)

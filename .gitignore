@@ -1,1 +1,5 @@
 backend/__pycache__
+backend/internal/__pycache__
+backend/routers/__pycache__
+old_backend
+backend/venv
