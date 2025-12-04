@@ -8,6 +8,9 @@ class Color:
     def __str__(self):
         return "Color(#" + f"{format(self.hex, 'X').zfill(6)}, id:{self.color_id})"
 
+    def __int__(self):
+        return self.hex
+
 @dataclass(frozen=True)
 class ColorPalette:
     id: int

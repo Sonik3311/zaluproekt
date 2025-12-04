@@ -16,6 +16,7 @@ from contextlib import asynccontextmanager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await router_broadcast.create_broadcast_task()
+    await router_board.create_snapshot_task()
     yield
 
 server = FastAPI(lifespan=lifespan)

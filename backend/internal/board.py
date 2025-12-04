@@ -1,7 +1,9 @@
 from pydantic import BaseModel
 from functools import lru_cache
 from color_palettes import ColorPalette, Color
-
+from tqdm import tqdm
+from config import Config
+from db_manager import DBManager
 
 class Pixel(BaseModel):
     x: int
@@ -10,7 +12,7 @@ class Pixel(BaseModel):
 
 
 class PixelBoard:
-    def __init__(self, width: int, height: int, color_palette: ColorPalette):
+    def __init__(self, width: int, height: int, color_palette: ColorPalette, db_manager: DBManager, config: Config):
         print(f"[Board] Starting setup")
         self._width: int = width
         self._height: int = height
@@ -18,8 +20,17 @@ class PixelBoard:
 
         print(f"[Board] - Generating board, x: {self._width}, y: {self._height}, {self._color_palette.colors[0]}")
         self._board: list[Pixel] = [
-            Pixel(x=i % width, y=i // height, color=self._color_palette.colors[0]) for i in range(width * height)
+            Pixel(x=i % width, y=i // height, color=self._color_palette.colors[0]) for i in tqdm(range(width * height), total=width * height)
         ]
+
+        if not config.is_volatile_mode:
+            pixels = db_manager.get_pixels()
+            print(f"[Board] Syncing Board with DB")
+            for x, y, hex in tqdm(pixels, total=len(pixels)):
+                color = int.from_bytes(hex, byteorder='big')
+                color_id = self.get_color_id(color)
+                self._board[y * self._width + x].color = self._color_palette.colors[color_id]
+
         print(f"[Board] - Done!")
         self._board_changes: list[Pixel] = []
         print(f"[Board] Ready")
@@ -36,6 +47,7 @@ class PixelBoard:
     def color_palette(self) -> ColorPalette:
         return self._color_palette
 
+
     @lru_cache(maxsize=128)
     def get_pixel_range(self, x: int, y: int, x_end: int, y_end: int) -> list[Pixel]:
         pixels: list[Pixel] = []
@@ -51,6 +63,13 @@ class PixelBoard:
             return self._color_palette.colors[col_id]
         except IndexError:
             return self._color_palette.colors[0]
+
+    @lru_cache(maxsize=20)
+    def get_color_id(self, color_hex: int) -> int:
+        for i, c in enumerate(self._color_palette.colors):
+            if c.hex == color_hex:
+                return i
+        return 0
 
     def set_pixel(self, x: int, y: int, color_id: int):
         i = y * self.width + x
