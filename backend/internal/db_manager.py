@@ -96,8 +96,9 @@ class DBManager:
         query = "ALTER TABLE snapshots AUTO_INCREMENT = 1"
         if reset_snapshots:
             cursor.execute(query)
-        print("[DBManager] !!!RESET DATABASE!!! !!!THIS IS SO WRONG!!! !!!POLICE ASSAULT IN PROGRESS!!! !!!PLEASE INVESTIGATE!!!")
-        self.commit()
+        if reset_snapshots or reset_board:
+            print("[DBManager] !!!RESET DATABASE!!! !!!THIS IS SO WRONG!!! !!!POLICE ASSAULT IN PROGRESS!!! !!!PLEASE INVESTIGATE!!!")
+            self.commit()
         cursor.close()
 
     def get_pixels(self):
