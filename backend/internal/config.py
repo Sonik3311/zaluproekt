@@ -2,6 +2,8 @@ from color_palettes import Color, ColorPalette
 import configparser
 import glob
 import os
+from colorama import Fore, Back, Style, init
+init(autoreset=True)
 
 
 class Config:
@@ -9,7 +11,10 @@ class Config:
         print(f"[Config] Starting to read '{config_filepath}'")
         config = configparser.ConfigParser()
         _ = config.read(config_filepath)
-        assert config.has_section("PIXELBOARD")
+        if not config.has_section("PIXELBOARD"):
+            print(f"[Config] {Back.RED + Style.BRIGHT}|!!| ERROR! No 'PIXELBOARD' section found in config file |!!|")
+            print("Perhaps, you put in the wrong file path?")
+            assert False, "No 'PIXELBOARD' section found"
 
         print("[Config] - Done!")
         self._board_width: int = int(config["PIXELBOARD"]["width"])
@@ -18,6 +23,10 @@ class Config:
 
         print("[Config] Loading color palettes..")
         self._palettes: list[ColorPalette] = self.load_color_palettes()
+        if len(self._palettes) == 0:
+            print(f"[Config] {Back.RED + Style.BRIGHT}|!!| ERROR! No color palettes found! |!!|")
+            assert False, "No color palettes found"
+
 
         self._color_palette_id: int = min(
             max(
@@ -28,8 +37,8 @@ class Config:
         )
 
         if len(self._palettes) < int(config["PIXELBOARD"]["color_palette_id"]) + 1:
-            print(f"[Config] |::| Warning! selected palette ID in {config_filepath} is higher than amount of available palettes! ID clamped to the maximum allowed value")
-            print(f"[Config] |::| Uncorrected selected palette ID: {int(config["PIXELBOARD"]["color_palette_id"])}")
+            print(f"[Config] {Fore.YELLOW}|::| Warning! selected palette ID in {config_filepath} is higher than amount of available palettes! ID clamped to the maximum allowed value")
+            print(f"[Config] {Fore.YELLOW}|::| Uncorrected selected palette ID: {int(config["PIXELBOARD"]["color_palette_id"])}")
         print(f"[Config] Selected palette ID: {self._color_palette_id}")
 
         #Load [DATABASE] section
@@ -42,12 +51,12 @@ class Config:
                 self._db_password = config["DATABASE"]["password"]
                 self._db_enabled = True
             except KeyError as e:
-                print(f"[Config] |::| Warning! DATABASE section is incomplete in {config_filepath}!")
-                print(f"[Config] |::| Working in VOLATILE mode")
+                print(f"[Config] {Fore.YELLOW}|::| Warning! DATABASE section is incomplete in {config_filepath}!")
+                print(f"[Config] {Fore.YELLOW}|::| Working in VOLATILE mode")
                 self._db_enabled = False
         else:
-            print(f"[Config] |::| Warning! DATABASE section not found in {config_filepath}!")
-            print(f"[Config] |::| Working in VOLATILE mode")
+            print(f"[Config] {Fore.YELLOW}|::| Warning! DATABASE section not found in {config_filepath}!")
+            print(f"[Config] {Fore.YELLOW}|::| Working in VOLATILE mode")
             self._db_enabled = False
 
         if config.has_section("SNAPSHOT") and self._db_enabled:
@@ -120,6 +129,9 @@ class Config:
     def clear_db_snapshots(self) -> bool:
         return self._clear_snapshots
 
+    def set_volatile_mode(self):
+        self._db_enabled = False
+
     @staticmethod
     def load_color_palettes() -> list[ColorPalette]:
 
@@ -134,20 +146,20 @@ class Config:
                 id += 1
                 _ = config.read(file_path)
                 if not config.has_section("PALETTE"):
-                    print(f"[Config] - |::| Palette under '{file_path}' is missing 'PALETTE' section. Skipping")
+                    print(f"[Config] {Fore.YELLOW}- |::| Palette under '{file_path}' is missing 'PALETTE' section. Skipping")
                     id -= 1
                     continue
 
 
                 colors: list[Color] = [Color(int(config["PALETTE"][key], base=16), index) for index, key in enumerate(config["PALETTE"])]
                 if len(colors) == 0:
-                    print(f"[Config] |::| Palette {id} under '{file_path}' is empty. Appending black and white")
+                    print(f"[Config] {Fore.YELLOW}- |::| Palette {id} under '{file_path}' is empty. Appending black and white")
                     colors.append(Color(0x000000, 0))
                     colors.append(Color(0xFFFFFF, 1))
                 palettes.append(ColorPalette(id, colors))
                 print(f"[Config] - New palette {id} under '{file_path}', colors: {len(colors)}")
             except IOError as e:
-                print(f"[Config] - |!!| Couldn't read file '{file_path}': {e}")
+                print(f"[Config] {Fore.YELLOW}- |!!| Couldn't read file '{file_path}': {e}")
                 continue
 
         return palettes

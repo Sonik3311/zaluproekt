@@ -1,5 +1,6 @@
 from internal import board, config, db_manager
-
+from colorama import Fore, Back, Style, init
+init(autoreset=True)
 
 class SharedState:
     _instance = None
@@ -17,6 +18,7 @@ class SharedState:
         self.config = config.Config("config.ini")
         if self.config.is_db_configured:
             self.db_manager = db_manager.DBManager(
+                self.config,
                 self.config.db_host,
                 self.config.db_port,
                 self.config.db_user,

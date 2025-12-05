@@ -1,8 +1,11 @@
 import mysql.connector
+from colorama import Fore, Back, Style, init
+init(autoreset=True)
+
 
 
 class DBManager:
-    def __init__(self, host, port, user, password, database, max_snapshots, reset_board=False, reset_snapshots=False): #, board_width, board_height, default_color):
+    def __init__(self, config, host, port, user, password, database, max_snapshots, reset_board=False, reset_snapshots=False): #, board_width, board_height, default_color):
         print("[DBManager] Initializing...")
         try:
             self._connection = mysql.connector.connect(
@@ -13,16 +16,18 @@ class DBManager:
                 database=database
             )
         except mysql.connector.Error as err:
-            print(f"[DBManager] |::| Failed to connect to DB {user}@{host}!")
-            print(f"[DBManager] |::| Working in VOLATILE mode!")
+            print(f"[DBManager] {Fore.YELLOW}|::| Failed to connect to DB {user}@{host}!")
+            print(f"[DBManager] {Fore.YELLOW}|::| Working in VOLATILE mode!")
+            config.set_volatile_mode()
             self._connection = None
             return
 
         if self._connection.is_connected():
             print(f"[DBManager] Connected to DB {user}@{host}!")
         else:
-            print(f"[DBManager] |::| Failed to connect to DB {user}@{host}!")
-            print(f"[DBManager] |::| Working in VOLATILE mode!")
+            print(f"[DBManager] {Fore.YELLOW}|::| Failed to connect to DB {user}@{host}!")
+            print(f"[DBManager] {Fore.YELLOW}|::| Working in VOLATILE mode!")
+            config.set_volatile_mode()
 
         self.reset_db(reset_board, reset_snapshots)
 
