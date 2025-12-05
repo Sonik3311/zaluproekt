@@ -48,7 +48,6 @@ async def set_pixel(req: ColorPixelRequestModel):
     # TODO: Сверка с БД по времени последнего закрашивания
 
     pixel_board.set_pixel(req.x, req.y, req.color)
-    print(pixel_board.get_color(req.color))
     db_manager.modify_pixel(req.x, req.y, (pixel_board.get_color(req.color)).hex)
 
 @router.get("/GetPixels/{x}/{y}/{x_end}/{y_end}", response_model=PixelBoardResponse)
@@ -62,7 +61,7 @@ def get_pixels(x: int, y: int, x_end: int, y_end: int):
     if (x >= x_end) or (y >= y_end):
         raise HTTPException(status_code=400, detail="Invalid pixel range")
 
-    pixels = pixel_board.get_pixel_range(x, y, x_end, y_end)
+    pixels = pixel_board.get_pixel_range(x, y, x_end, y_end, asdictionary=True)
 
     return {
         "pixels": pixels

@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from board import Pixel
 from color_palettes import ColorPalette
+from dataclasses import dataclass
 
 
 class PixelBoardResponse(BaseModel):

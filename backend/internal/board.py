@@ -1,11 +1,13 @@
-from pydantic import BaseModel
 from functools import lru_cache
 from color_palettes import ColorPalette, Color
 from tqdm import tqdm
 from config import Config
 from db_manager import DBManager
+from dataclasses import dataclass, asdict
 
-class Pixel(BaseModel):
+
+@dataclass()
+class Pixel:
     x: int
     y: int
     color: Color
@@ -19,9 +21,7 @@ class PixelBoard:
         self._color_palette: ColorPalette = color_palette
 
         print(f"[Board] - Generating board, x: {self._width}, y: {self._height}, {self._color_palette.colors[0]}")
-        self._board: list[Pixel] = [
-            Pixel(x=i % width, y=i // height, color=self._color_palette.colors[0]) for i in tqdm(range(width * height), total=width * height)
-        ]
+        self._board: list[Pixel] = self.create_board_batched(self._width, self._height, self._color_palette.colors[0])
 
         if not config.is_volatile_mode:
             pixels = db_manager.get_pixels()
@@ -49,11 +49,14 @@ class PixelBoard:
 
 
     @lru_cache(maxsize=128)
-    def get_pixel_range(self, x: int, y: int, x_end: int, y_end: int) -> list[Pixel]:
+    def get_pixel_range(self, x: int, y: int, x_end: int, y_end: int, asdictionary: bool = False) -> list[Pixel]:
         pixels: list[Pixel] = []
         for i in range(x, x_end):
             for j in range(y, y_end):
-                pixels.append(self._board[(j) * self.width + (i)])
+                if asdictionary:
+                    pixels.append(asdict(self._board[(j) * self.width + (i)]))
+                else:
+                    pixels.append(self._board[(j) * self.width + (i)])
 
         return pixels
 
@@ -82,3 +85,20 @@ class PixelBoard:
 
     def clear_changes(self):
         self._board_changes = []
+
+    @staticmethod
+    def create_board_batched(width, height, color, batch_size=125000):
+        total_pixels = width * height
+        board = []
+
+        with tqdm(total=total_pixels) as pbar:
+            for start in range(0, total_pixels, batch_size):
+                end = min(start + batch_size, total_pixels)
+                batch = [
+                    Pixel(x=i % width, y=i // width, color=color)  # Fixed
+                    for i in range(start, end)
+                ]
+                board.extend(batch)
+                pbar.update(end - start)
+
+        return board
