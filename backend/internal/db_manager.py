@@ -45,17 +45,14 @@ class DBManager:
             return
 
         cursor = self._connection.cursor()
-        query = "UPDATE pixel_board SET color = %s WHERE x = %s AND y = %s"
 
         byte_color = bytes.fromhex(hex(hex_color)[2:].zfill(6)[:6])
-        print(f"Original hex: {hex_color}")
-        print(f"Padded to 6 chars (3 bytes): {byte_color}")
-        print(f"Length in hex chars: {len(byte_color)}")
         try:
             query = "INSERT INTO pixel_board (x, y, color) VALUES (%s, %s, %s)"
             cursor.execute(query, (x, y, byte_color))
             print(f"[DBManager] Created pixel at ({x}, {y}) to color {hex_color}")
         except Exception as e:
+            query = "UPDATE pixel_board SET color = %s WHERE x = %s AND y = %s"
             cursor.execute(query, (byte_color, x, y))
             print(f"[DBManager] Modified pixel at ({x}, {y}) to color {hex_color}")
         finally:
