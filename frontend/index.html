@@ -16,11 +16,8 @@
                 height: 100%;
                 margin: 0;
                 background: var(--bg);
-                color: #e6eef6;
-                font-family:
-                    Inter,
-                    Segoe UI,
-                    Arial;
+                color: #e6e6e6;
+                font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
             }
             .app {
                 display: flex;
@@ -44,35 +41,43 @@
                 display: flex;
                 align-items: center;
                 justify-content: center;
+                margin-top: 20px;
             }
             .swatch {
                 position: absolute;
-                width: 18px;
-                height: 18px;
+                width: 20px;
+                height: 20px;
                 border-radius: 50%;
-                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
                 cursor: pointer;
-                border: 2px solid rgba(255, 255, 255, 0.08);
-            }
-            .controls {
+                border: 2px solid rgba(255, 255, 255, 0.15);
+                transition: all 0.2s ease;
                 display: flex;
-                flex-direction: column;
-                gap: 8px;
                 align-items: center;
+                justify-content: center;
+                font-size: 9px;
+                font-weight: bold;
+                color: white;
+                text-shadow: 0 0 2px rgba(0, 0, 0, 0.8);
             }
-            button {
-                background: var(--panel);
-                border: 1px solid rgba(255, 255, 255, 0.04);
-                color: var(--muted);
-                padding: 6px 8px;
-                border-radius: 8px;
-                cursor: pointer;
+            .swatch:hover {
+                transform: scale(1.15);
+                border-color: rgba(255, 255, 255, 0.4);
+                box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
+            }
+            .swatch.selected {
+                border: 3px solid white;
+                box-shadow: 0 0 12px rgba(255, 255, 255, 0.6);
+                transform: scale(1.2);
             }
             .status {
                 font-size: 12px;
                 color: var(--muted);
                 margin-top: 6px;
                 text-align: center;
+                width: 100%;
+                padding: 4px;
+                background: rgba(0, 0, 0, 0.2);
+                border-radius: 4px;
             }
             .main {
                 flex: 1;
@@ -88,6 +93,9 @@
                 gap: 8px;
                 align-items: center;
                 padding: 6px 8px;
+                background: rgba(0, 0, 0, 0.2);
+                border-radius: 6px;
+                margin-bottom: 8px;
             }
             .canvas-wrap {
                 flex: 1;
@@ -107,94 +115,32 @@
                 position: absolute;
                 left: 8px;
                 bottom: 8px;
-                background: rgba(0, 0, 0, 0.4);
-                padding: 6px 8px;
+                background: rgba(0, 0, 0, 0.7);
+                padding: 6px 10px;
                 border-radius: 6px;
                 font-size: 13px;
                 color: var(--muted);
+                border: 1px solid rgba(255, 255, 255, 0.1);
             }
             #wrap {
                 touch-action: none;
                 overscroll-behavior: none;
-            }
-            .modal {
-                display: none;
-                position: fixed;
-                inset: 0;
-                background: rgba(0, 0, 0, 0.6);
-                align-items: center;
-                justify-content: center;
-                z-index: 9999;
-            }
-            .modal-content {
-                background: #1b2230;
-                padding: 16px 20px;
-                border-radius: 10px;
-                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-                color: #e6eef6;
-                min-width: 240px;
-            }
-            .modal-content h3 {
-                margin: 0 0 10px;
-                font-size: 16px;
-                text-align: center;
-            }
-            .modal-content label {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                margin: 4px 0;
-                font-size: 13px;
-            }
-            .modal-content input[type="range"] {
-                flex: 1;
-                margin-left: 8px;
-            }
-            .preview {
-                width: 100%;
-                height: 40px;
-                border-radius: 6px;
-                margin-bottom: 10px;
-                border: 1px solid rgba(255, 255, 255, 0.1);
-            }
-            .modal-buttons {
-                display: flex;
-                justify-content: space-between;
-                margin-top: 10px;
-            }
-            .modal-buttons button {
-                flex: 1;
-                margin: 0 4px;
-                background: var(--panel);
-                color: var(--muted);
-                border: 1px solid rgba(255, 255, 255, 0.1);
-                border-radius: 6px;
-                padding: 6px;
-                cursor: pointer;
-            }
-            .modal-buttons button:hover {
-                background: var(--accent);
-                color: #fff;
             }
         </style>
     </head>
     <body>
         <div class="app">
             <div class="left">
+                <!-- ПАЛИТРА ИЗ 12 ЦВЕТОВ -->
                 <div class="palette" id="palette"></div>
-                <div class="controls">
-                    <button id="zoomIn">+</button>
-                    <button id="zoomOut">−</button>
-                    <button id="erase">Ластик</button>
-                    <button id="colorPickerBtn">Цвет</button>
-                </div>
-                <div class="status" id="status">Подключение...</div>
+                <!-- НЕТ КНОПОК - ТОЛЬКО СТАТУС -->
+                <div class="status" id="status">Загрузка...</div>
             </div>
 
             <div class="main">
                 <div class="toolbar">
                     <div>
-                        Полотно: <strong id="boardSize">10000×10000</strong>
+                        Полотно: <strong id="boardSize">2500×2500</strong>
                     </div>
                     <div style="flex: 1"></div>
                     <div>Масштаб: <span id="scaleLabel">8</span>x</div>
@@ -202,50 +148,13 @@
 
                 <div class="canvas-wrap" id="wrap">
                     <canvas id="c"></canvas>
-                    <div class="hint">
-                        Колесо — зум, перетаскивать — пан. Клик — закрасить
+                    <div class="hint" id="hintText">
+                        Колесо — зум, перетаскивать — пан. Выберите цвет для закрашивания
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- скрытый native color input для выбора цвета -->
-        <!-- делаем невидимым, но кликабельным -->
-        <input
-            type="color"
-            id="nativeColor"
-            style="
-                position: fixed;
-                opacity: 0;
-                width: 0;
-                height: 0;
-                border: none;
-                padding: 0;
-                margin: 0;
-            "
-        />
-
         <script src="project.js"></script>
-
-        <!-- Кастомное окно выбора цвета -->
-        <div id="colorModal" class="modal">
-            <div class="modal-content">
-                <h3>Выбор цвета</h3>
-                <div class="preview" id="colorPreview"></div>
-                <label
-                    >R: <input type="range" id="rRange" min="0" max="255"
-                /></label>
-                <label
-                    >G: <input type="range" id="gRange" min="0" max="255"
-                /></label>
-                <label
-                    >B: <input type="range" id="bRange" min="0" max="255"
-                /></label>
-                <div class="modal-buttons">
-                    <button id="colorOk">ОК</button>
-                    <button id="colorCancel">Отмена</button>
-                </div>
-            </div>
-        </div>
     </body>
 </html>
