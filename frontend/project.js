@@ -1,19 +1,25 @@
 /* ===========================
    Конфигурация и состояние
    =========================== */
-const API_BASE_URL = "http://localhost:8080/api"; // Твой сервер на порту 8080
+const API_BASE_URL = "http://localhost:8080";
 
 const API_URLS = {
-  SETTINGS: API_BASE_URL + "/settings",
-  COLOR_PIXEL: API_BASE_URL + "/ColorPixel",
+  SETTINGS: API_BASE_URL + "/api/settings",
+  COLOR_PIXEL: API_BASE_URL + "/api/ColorPixel",
   GET_PIXELS: (x, y, x_end, y_end) =>
-    API_BASE_URL + `/GetPixels/${x}/${y}/${x_end}/${y_end}`,
-  STREAM: API_BASE_URL + "/stream",
+    API_BASE_URL + `/api/GetPixels/${x}/${y}/${x_end}/${y_end}`,
+  STREAM: API_BASE_URL + "/api/stream",
 };
 
+// Резервная палитра на 12 цветов (используется если сервер недоступен)
+const FALLBACK_PALETTE = [
+  "#ff6b6b", "#ff9e6d", "#ffcc5c", "#a8e6cf", "#4ecdc4", "#45b7d1",
+  "#96ceb4", "#588157", "#3a5a40", "#344e41", "#9a8c98", "#4a4e69"
+];
+
 // Размеры будем получать с сервера
-let LOGICAL_WIDTH = 10000;
-let LOGICAL_HEIGHT = 10000;
+let LOGICAL_WIDTH = 2500;
+let LOGICAL_HEIGHT = 2500;
 
 const canvas = document.getElementById("c");
 const wrap = document.getElementById("wrap");
@@ -21,15 +27,14 @@ const statusEl = document.getElementById("status");
 const scaleLabel = document.getElementById("scaleLabel");
 const boardSizeEl = document.getElementById("boardSize");
 const paletteEl = document.getElementById("palette");
-const eraseBtn = document.getElementById("erase");
-const colorBtn = document.getElementById("colorPickerBtn");
+const hintText = document.getElementById("hintText");
 
 /* Viewport / transforms */
 let scale = 8;
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 40;
-let offsetX = -(LOGICAL_WIDTH / 2) * scale + window.innerWidth / 2;
-let offsetY = -(LOGICAL_HEIGHT / 2) * scale + window.innerHeight / 2;
+let offsetX = 0;
+let offsetY = 0;
 
 let dragging = false;
 let dragStart = null;
@@ -39,9 +44,9 @@ let needsRedraw = true;
 const pixels = new Map();
 
 /* Палитра и текущий цвет */
-let colorPalette = [];
-let currentColorIndex = 0;
-let eraseMode = false;
+let colorPalette = FALLBACK_PALETTE; // Начинаем с резервной
+let currentColorIndex = null; // null означает "цвет не выбран"
+let isServerOnline = false;
 
 /* SSE соединение */
 let eventSource = null;
@@ -51,37 +56,90 @@ let eventSource = null;
    =========================== */
 async function init() {
   try {
-    // 1. Получаем настройки с сервера
-    const settings = await fetchData(API_URLS.SETTINGS);
+    // 1. Пробуем получить настройки с сервера
+    let serverSettings = null;
+    try {
+      serverSettings = await fetchWithTimeout(API_URLS.SETTINGS, 3000);
+      isServerOnline = true;
+    } catch (serverError) {
+      console.log("Сервер недоступен, используем локальную палитру");
+      isServerOnline = false;
+    }
 
-    // 2. Обновляем размеры доски
-    LOGICAL_WIDTH = settings.board_size.x;
-    LOGICAL_HEIGHT = settings.board_size.y;
+    if (isServerOnline && serverSettings) {
+      // Сервер доступен - используем его настройки
+      LOGICAL_WIDTH = serverSettings.board_size.x;
+      LOGICAL_HEIGHT = serverSettings.board_size.y;
+      
+      // Берем первые 12 цветов с сервера
+      const allColors = serverSettings.palette.colors;
+      const colorsToUse = allColors.slice(0, 12);
+      colorPalette = colorsToUse.map((colorObj) => 
+        numberToHexColor(colorObj.hex)
+      );
+      
+      statusEl.textContent = "Сервер онлайн";
+      console.log("Используем палитру с сервера:", colorPalette);
+      
+      // Пробуем загрузить пиксели
+      try {
+        await loadAllPixels();
+      } catch (pixelError) {
+        console.log("Не удалось загрузить пиксели, продолжаем без них");
+      }
+      
+      // Пробуем подключиться к SSE
+      try {
+        connectToStream();
+      } catch (sseError) {
+        console.log("SSE недоступен");
+      }
+      
+    } else {
+      // Сервер недоступен - используем локальные данные
+      LOGICAL_WIDTH = 2500;
+      LOGICAL_HEIGHT = 2500;
+      colorPalette = FALLBACK_PALETTE;
+      statusEl.textContent = "Сервер оффлайн (только просмотр)";
+      console.log("Используем локальную палитру:", colorPalette);
+    }
+
+    // Обновляем интерфейс
     boardSizeEl.textContent = LOGICAL_WIDTH + "×" + LOGICAL_HEIGHT;
-
-    // 3. Обрабатываем палитру
-    colorPalette = settings.palette.colors.map((colorObj) =>
-      numberToHexColor(colorObj.hex),
-    );
-
-    console.log("Размер доски:", LOGICAL_WIDTH, "x", LOGICAL_HEIGHT);
-    console.log("Палитра:", colorPalette);
-
-    // 4. Перестраиваем интерфейс
     rebuildPalette();
     updateOffsets();
     resizeCanvas();
+    updateHint();
 
-    // 5. Загружаем пиксели
-    await loadAllPixels();
+    console.log("Размер доски:", LOGICAL_WIDTH, "x", LOGICAL_HEIGHT);
+    console.log("Палитра (12 цветов):", colorPalette);
 
-    // 6. Подключаемся к real-time потоку
-    connectToStream();
-
-    statusEl.textContent = "Готово";
   } catch (error) {
     console.error("Ошибка при инициализации:", error);
     statusEl.textContent = "Ошибка загрузки";
+    // Все равно показываем интерфейс с резервной палитрой
+    boardSizeEl.textContent = "2500×2500";
+    rebuildPalette();
+    resizeCanvas();
+  }
+}
+
+// Функция fetch с таймаутом
+async function fetchWithTimeout(url, timeout = 5000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      throw new Error(`Ошибка HTTP: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
   }
 }
 
@@ -94,25 +152,19 @@ function numberToHexColor(number) {
   return "#" + hexString;
 }
 
-// Универсальная функция для GET-запросов
-async function fetchData(url) {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Ошибка HTTP: ${response.status}`);
-  }
-  return await response.json();
-}
-
 /* ===========================
-   Работа с пикселями
+   Работа с пикселями (только при онлайн режиме)
    =========================== */
 async function loadAllPixels() {
+  if (!isServerOnline) return;
+  
   try {
     statusEl.textContent = "Загрузка пикселей...";
 
     // Запрашиваем всю доску
-    const pixelsData = await fetchData(
+    const pixelsData = await fetchWithTimeout(
       API_URLS.GET_PIXELS(0, 0, LOGICAL_WIDTH - 1, LOGICAL_HEIGHT - 1),
+      10000
     );
 
     // Очищаем текущие пиксели
@@ -132,70 +184,105 @@ async function loadAllPixels() {
 
     needsRedraw = true;
     console.log("Загружено пикселей:", pixels.size);
-    statusEl.textContent = "Загружено";
+    statusEl.textContent = "Сервер онлайн";
+
   } catch (error) {
     console.error("Ошибка при загрузке пикселей:", error);
-    statusEl.textContent = "Ошибка загрузки пикселей";
+    statusEl.textContent = "Сервер онлайн (пиксели не загружены)";
   }
 }
 
 /* ===========================
-   Палитра - перестроение под серверные данные
+   Палитра - 12 цветов по кругу (работает всегда)
    =========================== */
 function rebuildPalette() {
   paletteEl.innerHTML = "";
 
-  const r = 26;
-  const cx = 32,
-    cy = 32;
-  const n = colorPalette.length;
+  const radius = 24;
+  const centerX = 32;
+  const centerY = 32;
+  const totalColors = colorPalette.length;
 
   colorPalette.forEach((color, index) => {
-    const ang = (index / n) * Math.PI * 2 - Math.PI / 2;
-    const x = cx + Math.cos(ang) * r;
-    const y = cy + Math.sin(ang) * r;
+    // Рассчитываем позицию на круге
+    const angle = (index / totalColors) * Math.PI * 2 - Math.PI / 2;
+    const x = centerX + Math.cos(angle) * radius;
+    const y = centerY + Math.sin(angle) * radius;
 
-    const sw = document.createElement("div");
-    sw.className = "swatch";
-    sw.style.left = x - 9 + "px";
-    sw.style.top = y - 9 + "px";
-    sw.style.background = color;
-    sw.title = `Цвет ${index}: ${color}`;
+    const swatch = document.createElement("div");
+    swatch.className = "swatch";
+    swatch.style.left = (x - 10) + "px";
+    swatch.style.top = (y - 10) + "px";
+    swatch.style.background = color;
+    
+    // Номер цвета (1-12)
+    swatch.textContent = index + 1;
+    
+    // Подсказка при наведении
+    let titleText = `Цвет ${index + 1}: ${color}\nКлик: выбрать/отменить`;
+    if (!isServerOnline) {
+      titleText += "\n(сервер оффлайн - нельзя закрашивать)";
+    }
+    swatch.title = titleText;
 
-    sw.addEventListener("click", () => {
-      currentColorIndex = index;
-      eraseMode = false;
-      updateUI();
+    swatch.addEventListener("click", () => {
+      toggleColorSelection(index);
     });
 
-    paletteEl.appendChild(sw);
+    paletteEl.appendChild(swatch);
   });
 
   updateUI();
 }
 
+function toggleColorSelection(index) {
+  if (currentColorIndex === index) {
+    // Повторное нажатие на тот же цвет - снимаем выбор
+    currentColorIndex = null;
+    console.log("Выбор цвета отменен");
+  } else {
+    // Выбираем новый цвет
+    currentColorIndex = index;
+    console.log(`Выбран цвет ${index + 1}: ${colorPalette[index]}`);
+  }
+  updateUI();
+  updateHint();
+}
+
 function updateUI() {
-  document.querySelectorAll(".swatch").forEach((s, index) => {
-    s.style.outline = index === currentColorIndex ? "2px solid #fff" : "";
+  // Снимаем выделение со всех цветов
+  document.querySelectorAll(".swatch").forEach((swatch, index) => {
+    swatch.classList.remove("selected");
   });
 
-  paletteEl.style.boxShadow = eraseMode
-    ? "inset 0 0 0 3px rgba(255,255,255,.06)"
-    : "none";
+  // Выделяем выбранный цвет (если есть)
+  if (currentColorIndex !== null) {
+    const selectedSwatch = document.querySelectorAll(".swatch")[currentColorIndex];
+    if (selectedSwatch) {
+      selectedSwatch.classList.add("selected");
+    }
+  }
+}
 
-  eraseBtn.style.backgroundColor = eraseMode ? "#333" : "";
-  eraseBtn.style.color = eraseMode ? "#fff" : "";
-
-  // Обновляем цвет кнопки выбора цвета
-  colorBtn.style.backgroundColor = eraseMode
-    ? "#666"
-    : colorPalette[currentColorIndex];
+function updateHint() {
+  if (!hintText) return;
+  
+  if (!isServerOnline) {
+    hintText.textContent = "Сервер недоступен. Можно только просматривать и выбирать цвета.";
+  } else if (currentColorIndex === null) {
+    hintText.textContent = "Колесо — зум, перетаскивать — пан. Выберите цвет для закрашивания";
+  } else {
+    const colorName = colorPalette[currentColorIndex];
+    hintText.textContent = `Колесо — зум, перетаскивать — пан. Выбран цвет ${currentColorIndex + 1} (${colorName}) — клик для отмены`;
+  }
 }
 
 /* ===========================
-   Real-time обновления через SSE
+   Real-time обновления через SSE (только при онлайн)
    =========================== */
 function connectToStream() {
+  if (!isServerOnline) return;
+  
   try {
     eventSource = new EventSource(API_URLS.STREAM);
 
@@ -217,14 +304,9 @@ function connectToStream() {
       }
     });
 
-    eventSource.addEventListener("ping", function (event) {
-      console.log("Ping от сервера");
-    });
-
     eventSource.onerror = function (error) {
       console.error("Ошибка SSE соединения:", error);
-      statusEl.textContent = "Ошибка соединения";
-      setTimeout(connectToStream, 3000);
+      statusEl.textContent = "Сервер онлайн (SSE ошибка)";
     };
 
     console.log("Подключились к real-time потоку");
@@ -238,14 +320,18 @@ function updatePixelFromStream(x, y, colorId) {
     const key = x + "," + y;
     pixels.set(key, colorId);
     needsRedraw = true;
-    console.log("апдейт пикселя:", key, colorId);
   }
 }
 
 /* ===========================
-   Отправка пикселя на сервер
+   Отправка пикселя на сервер (только при онлайн)
    =========================== */
 async function sendSetPixel(x, y, colorIndex) {
+  if (!isServerOnline) {
+    alert("Сервер недоступен. Невозможно закрасить пиксель.");
+    return;
+  }
+  
   try {
     const response = await fetch(API_URLS.COLOR_PIXEL, {
       method: "POST",
@@ -267,6 +353,7 @@ async function sendSetPixel(x, y, colorIndex) {
     }
 
     console.log(`Пиксель [${x},${y}] закрашен цветом ${colorIndex}`);
+
   } catch (error) {
     console.error("Ошибка при обновлении пикселя:", error);
     alert(`Ошибка: ${error.message}`);
@@ -274,7 +361,7 @@ async function sendSetPixel(x, y, colorIndex) {
 }
 
 /* ===========================
-   Отрисовка и координаты
+   Отрисовка и координаты (работает всегда)
    =========================== */
 function resizeCanvas() {
   canvas.width = wrap.clientWidth;
@@ -417,7 +504,7 @@ function loop() {
 }
 
 /* ===========================
-   Обработчики событий (масштабирование, клики)
+   Обработчики событий
    =========================== */
 
 let lastDown = null;
@@ -523,6 +610,12 @@ wrap.addEventListener("pointerup", (e) => {
   const dt = Date.now() - lastDown.time;
 
   if (dx < 6 && dy < 6 && dt < 600) {
+    // Проверяем, выбран ли цвет
+    if (currentColorIndex === null) {
+      console.log("Цвет не выбран. Нажмите на цвет в палитре.");
+      return;
+    }
+
     const rect = wrap.getBoundingClientRect();
     const px = e.clientX - rect.left;
     const py = e.clientY - rect.top;
@@ -530,21 +623,22 @@ wrap.addEventListener("pointerup", (e) => {
 
     if (x < 0 || x >= LOGICAL_WIDTH || y < 0 || y >= LOGICAL_HEIGHT) return;
 
-    const colorIndex = eraseMode ? -1 : currentColorIndex;
-    const key = x + "," + y;
-
-    if (eraseMode || colorIndex === -1) {
-      pixels.delete(key);
-    } else {
-      pixels.set(key, colorIndex);
+    // В оффлайн режиме только визуальное закрашивание
+    if (!isServerOnline) {
+      const key = x + "," + y;
+      pixels.set(key, currentColorIndex);
+      needsRedraw = true;
+      console.log(`Пиксель [${x},${y}] закрашен локально (оффлайн)`);
+      return;
     }
 
+    // В онлайн режиме отправляем на сервер
+    const key = x + "," + y;
+    pixels.set(key, currentColorIndex);
     needsRedraw = true;
 
-    // Отправляем на сервер (для ластика отправляем -1 или обрабатываем на сервере)
-    if (!eraseMode) {
-      sendSetPixel(x, y, colorIndex);
-    }
+    // Отправляем на сервер
+    sendSetPixel(x, y, currentColorIndex);
   }
   lastDown = null;
 });
@@ -555,44 +649,6 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "+" || e.key === "=")
     zoomAt(rect.width / 2, rect.height / 2, 1.2);
   if (e.key === "-") zoomAt(rect.width / 2, rect.height / 2, 1 / 1.2);
-});
-
-document.getElementById("zoomIn")?.addEventListener("click", () => {
-  const rect = wrap.getBoundingClientRect();
-  zoomAt(rect.width / 2, rect.height / 2, 1.2);
-});
-document.getElementById("zoomOut")?.addEventListener("click", () => {
-  const rect = wrap.getBoundingClientRect();
-  zoomAt(rect.width / 2, rect.height / 2, 1 / 1.2);
-});
-
-eraseBtn.addEventListener("click", () => {
-  eraseMode = !eraseMode;
-  updateUI();
-});
-
-/* --- Кастомный выбор цвета --- */
-const nativeColor = document.getElementById("nativeColor");
-colorBtn.addEventListener("click", () => {
-  nativeColor.value = colorPalette[currentColorIndex];
-  nativeColor.click();
-});
-
-nativeColor.addEventListener("input", (e) => {
-  const newColor = e.target.value;
-  const newIndex = colorPalette.indexOf(newColor);
-
-  if (newIndex !== -1) {
-    currentColorIndex = newIndex;
-  } else {
-    // Если цвета нет в палитре, добавляем его (опционально)
-    colorPalette.push(newColor);
-    currentColorIndex = colorPalette.length - 1;
-    rebuildPalette();
-  }
-
-  eraseMode = false;
-  updateUI();
 });
 
 /* ===========================
