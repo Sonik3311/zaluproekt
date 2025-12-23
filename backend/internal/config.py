@@ -105,7 +105,7 @@ class Config:
 
     @property
     def db_password(self) -> str:
-        return_password = self._db_password
+        return_password = self._db_password or ""
         self._db_password = None
         return return_password
 
@@ -145,21 +145,36 @@ class Config:
             try:
                 id += 1
                 _ = config.read(file_path)
+                triggered_error = False
                 if not config.has_section("PALETTE"):
-                    print(f"[Config] {Fore.YELLOW}- |::| Palette under '{file_path}' is missing 'PALETTE' section. Skipping")
+                    print(f"[Config] {Fore.YELLOW} - |::| Palette under '{file_path}' is missing 'PALETTE' section. Skipping")
                     id -= 1
                     continue
 
+                colors: list[Color] = []
+                error_counter = 0
+                for key in config["PALETTE"]:
+                    try:
+                        colors.append(Color(int(config["PALETTE"][key], base=16), len(colors)))
+                    except ValueError as e:
+                        triggered_error = True
+                        error_counter += 1
 
-                colors: list[Color] = [Color(int(config["PALETTE"][key], base=16), index) for index, key in enumerate(config["PALETTE"])]
                 if len(colors) == 0:
-                    print(f"[Config] {Fore.YELLOW}- |::| Palette {id} under '{file_path}' is empty. Appending black and white")
+                    print(f"[Config] {Fore.YELLOW} - |::| Palette {id} under '{file_path}' is empty. Appending black and white")
                     colors.append(Color(0x000000, 0))
                     colors.append(Color(0xFFFFFF, 1))
+                    triggered_error = True
                 palettes.append(ColorPalette(id, colors))
-                print(f"[Config] - New palette {id} under '{file_path}', colors: {len(colors)}")
-            except IOError as e:
+
+                if triggered_error:
+                    print(f"[Config] {Fore.YELLOW}- |::| Palette {id} under '{file_path}' loaded with errors ({error_counter})!")
+                else:
+                    print(f"[Config] - Palette {id} under '{file_path}' successfully loaded!")
+            except Exception as e:
                 print(f"[Config] {Fore.YELLOW}- |!!| Couldn't read file '{file_path}': {e}")
                 continue
+            finally:
+                config.clear()
 
         return palettes

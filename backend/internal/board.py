@@ -30,6 +30,8 @@ class PixelBoard:
                 color = int.from_bytes(hex, byteorder='big')
                 color_id = self.get_color_id(color)
                 self._board[y * self._width + x].color = self._color_palette.colors[color_id]
+        else:
+            print(f"[Board] - Volatile mode, skipping DB sync (DBManager failed?)")
 
         print(f"[Board] - Done!")
         self._board_changes: list[Pixel] = []
