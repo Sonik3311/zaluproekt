@@ -3,7 +3,6 @@ from colorama import Fore, Back, Style, init
 init(autoreset=True)
 
 
-
 class DBManager:
     def __init__(self, config, host, port, user, password, database, max_snapshots, reset_board=False, reset_snapshots=False): #, board_width, board_height, default_color):
         print("[DBManager] Initializing...")
