@@ -13,19 +13,20 @@ const API_URLS = {
 
 // Резервная палитра на 12 цветов (используется если сервер недоступен)
 const FALLBACK_PALETTE = [
-  "#ff6b6b",
-  "#ff9e6d",
-  "#ffcc5c",
-  "#a8e6cf",
-  "#4ecdc4",
-  "#45b7d1",
-  "#96ceb4",
-  "#588157",
-  "#3a5a40",
-  "#344e41",
+  "#07121a",
   "#9a8c98",
-  "#4a4e69",
+  "#344e41",
+  "#3a5a40",
+  "#588157",
+  "#96ceb4",
+  "#45b7d1",
+  "#4ecdc4",
+  "#a8e6cf",
+  "#ffcc5c",
+  "#ff9e6d",
+  "#ff6b6b",
 ];
+
 
 // Размеры будем получать с сервера
 let LOGICAL_WIDTH = 2500;
@@ -83,7 +84,7 @@ async function init() {
 
       // Берем первые 12 цветов с сервера
       const allColors = serverSettings.palette.colors;
-      const colorsToUse = allColors.slice(0, 12);
+      const colorsToUse = allColors.slice(0, 15);
       colorPalette = colorsToUse.map((colorObj) =>
         numberToHexColor(colorObj.hex),
       );
@@ -106,8 +107,8 @@ async function init() {
       }
     } else {
       // Сервер недоступен - используем локальные данные
-      LOGICAL_WIDTH = 2500;
-      LOGICAL_HEIGHT = 2500;
+      LOGICAL_WIDTH = 100;
+      LOGICAL_HEIGHT = 100;
       colorPalette = FALLBACK_PALETTE;
       statusEl.textContent = "Сервер оффлайн (только просмотр)";
       console.log("Используем локальную палитру:", colorPalette);
@@ -200,27 +201,33 @@ async function loadAllPixels() {
 }
 
 /* ===========================
-   Палитра - 12 цветов по кругу (работает всегда)
+   Палитра - 12 цветов вертикально (работает всегда)
    =========================== */
 function rebuildPalette() {
   paletteEl.innerHTML = "";
 
-  const radius = 24;
-  const centerX = 32;
-  const centerY = 32;
-  const totalColors = colorPalette.length;
-
+  // Размеры и отступы для вертикального расположения
+  const swatchSize = 44;
+  const spacing = 4;
+  
   colorPalette.forEach((color, index) => {
-    // Рассчитываем позицию на круге
-    const angle = (index / totalColors) * Math.PI * 2 - Math.PI / 2;
-    const x = centerX + Math.cos(angle) * radius;
-    const y = centerY + Math.sin(angle) * radius;
-
     const swatch = document.createElement("div");
     swatch.className = "swatch";
-    swatch.style.left = x - 10 + "px";
-    swatch.style.top = y - 10 + "px";
+    swatch.style.width = swatchSize + "px";
+    swatch.style.height = swatchSize + "px";
     swatch.style.background = color;
+    swatch.style.borderRadius = "6px";
+    swatch.style.display = "flex";
+    swatch.style.alignItems = "center";
+    swatch.style.justifyContent = "center";
+    swatch.style.fontSize = "14px";
+    swatch.style.fontWeight = "bold";
+    swatch.style.color = getContrastColor(color);
+    swatch.style.textShadow = "0 0 2px rgba(0, 0, 0, 0.8)";
+    swatch.style.border = "2px solid rgba(255, 255, 255, 0.15)";
+    swatch.style.cursor = "pointer";
+    swatch.style.transition = "all 0.2s ease";
+    swatch.style.marginBottom = spacing + "px";
 
     // Номер цвета (1-12)
     swatch.textContent = index + 1;
@@ -240,6 +247,20 @@ function rebuildPalette() {
   });
 
   updateUI();
+}
+
+// Вспомогательная функция для определения контрастного цвета текста
+function getContrastColor(hexColor) {
+  // Конвертируем HEX в RGB
+  const r = parseInt(hexColor.substr(1, 2), 16);
+  const g = parseInt(hexColor.substr(3, 2), 16);
+  const b = parseInt(hexColor.substr(5, 2), 16);
+  
+  // Вычисляем яркость по формуле
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+  
+  // Возвращаем черный для светлых цветов, белый для темных
+  return brightness > 128 ? "#000000" : "#ffffff";
 }
 
 function toggleColorSelection(index) {
@@ -385,6 +406,7 @@ function updateOffsets() {
 }
 
 function screenToCanvas(px, py) {
+  // Используем правильное округление для получения точных координат
   const x = Math.floor((px - offsetX) / scale);
   const y = Math.floor((py - offsetY) / scale);
   return { x, y };
@@ -505,6 +527,13 @@ function draw() {
       ctx.stroke();
     }
   }
+  ctx.strokeStyle = "rgba(255,255,255,0.1)";
+  ctx.lineWidth = 1;
+  const boardX = offsetX;
+  const boardY = offsetY;
+  const boardWidth = LOGICAL_WIDTH * scale;
+  const boardHeight = LOGICAL_HEIGHT * scale;
+  ctx.strokeRect(boardX, boardY, boardWidth, boardHeight);
 }
 
 function loop() {
@@ -630,7 +659,12 @@ wrap.addEventListener("pointerup", (e) => {
     const py = e.clientY - rect.top;
     const { x, y } = screenToCanvas(px, py);
 
-    if (x < 0 || x >= LOGICAL_WIDTH || y < 0 || y >= LOGICAL_HEIGHT) return;
+    // ВАЖНОЕ ИСПРАВЛЕНИЕ: правильная проверка границ
+    // Если размер доски 5x5, допустимые координаты: 0,1,2,3,4
+    if (x < 0 || x >= LOGICAL_WIDTH || y < 0 || y >= LOGICAL_HEIGHT) {
+      console.log(`Клик вне границ: (${x}, ${y}) допустимые: 0-${LOGICAL_WIDTH-1}, 0-${LOGICAL_HEIGHT-1}`);
+      return;
+    }
 
     // В оффлайн режиме только визуальное закрашивание
     if (!isServerOnline) {

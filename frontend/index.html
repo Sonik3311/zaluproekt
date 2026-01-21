@@ -6,7 +6,7 @@
         <title>Pixel Board — прототип</title>
         <style>
             :root {
-                --bg: #0f1720;
+                --bg: #0f161f;
                 --panel: #0b1220;
                 --accent: #7c3aed;
                 --muted: #9aa4b2;
@@ -18,6 +18,7 @@
                 background: var(--bg);
                 color: #e6e6e6;
                 font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+                overflow: hidden;
             }
             .app {
                 display: flex;
@@ -30,54 +31,80 @@
                 width: 72px;
                 display: flex;
                 flex-direction: column;
+                background: #00000033;
+                border-radius: 8px;
+                padding: 8px;
+                position: relative;
+            }
+            .palette-container {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
                 align-items: center;
-                gap: 12px;
+                overflow-y: auto;
+                padding: 4px 0;
+                min-height: 0; /* Важно для правильной работы flex */
+            }
+            /* Скрываем скроллбар */
+            .palette-container::-webkit-scrollbar {
+                width: 0;
+                background: transparent;
+            }
+            .palette-container {
+                scrollbar-width: none;
+                -ms-overflow-style: none;
             }
             .palette {
-                width: 64px;
-                height: 64px;
-                border-radius: 50%;
-                position: relative;
                 display: flex;
+                flex-direction: column;
                 align-items: center;
-                justify-content: center;
-                margin-top: 20px;
+                width: 100%;
             }
             .swatch {
-                position: absolute;
-                width: 20px;
-                height: 20px;
-                border-radius: 50%;
+                width: 44px;
+                height: 44px;
+                border-radius: 6px;
                 cursor: pointer;
                 border: 2px solid rgba(255, 255, 255, 0.15);
                 transition: all 0.2s ease;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                font-size: 9px;
+                font-size: 14px;
                 font-weight: bold;
-                color: white;
                 text-shadow: 0 0 2px rgba(0, 0, 0, 0.8);
+                margin-bottom: 6px;
+                flex-shrink: 0;
             }
             .swatch:hover {
-                transform: scale(1.15);
+                transform: scale(1.08);
                 border-color: rgba(255, 255, 255, 0.4);
                 box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
             }
             .swatch.selected {
                 border: 3px solid white;
                 box-shadow: 0 0 12px rgba(255, 255, 255, 0.6);
-                transform: scale(1.2);
+                transform: scale(1.1);
+            }
+            .status-container {
+                margin-top: auto;
+                padding-top: 8px;
+                border-top: 1px solid rgba(255, 255, 255, 0.1);
+                width: 100%;
             }
             .status {
-                font-size: 12px;
+                font-size: 11px;
                 color: var(--muted);
-                margin-top: 6px;
                 text-align: center;
                 width: 100%;
-                padding: 4px;
-                background: rgba(0, 0, 0, 0.2);
+                padding: 6px 2px;
+                background: rgba(0, 0, 0, 0.3);
                 border-radius: 4px;
+                line-height: 1.3;
+                word-break: break-word;
+                overflow-wrap: break-word;
+                max-width: 100%;
+                box-sizing: border-box;
             }
             .main {
                 flex: 1;
@@ -96,6 +123,7 @@
                 background: rgba(0, 0, 0, 0.2);
                 border-radius: 6px;
                 margin-bottom: 8px;
+                flex-shrink: 0;
             }
             .canvas-wrap {
                 flex: 1;
@@ -131,10 +159,14 @@
     <body>
         <div class="app">
             <div class="left">
-                <!-- ПАЛИТРА ИЗ 12 ЦВЕТОВ -->
-                <div class="palette" id="palette"></div>
-                <!-- НЕТ КНОПОК - ТОЛЬКО СТАТУС -->
-                <div class="status" id="status">Загрузка...</div>
+                <!-- КОНТЕЙНЕР ДЛЯ ПАЛИТРЫ -->
+                <div class="palette-container">
+                    <div class="palette" id="palette"></div>
+                </div>
+                <!-- КОНТЕЙНЕР ДЛЯ СТАТУСА ВНИЗУ -->
+                <div class="status-container">
+                    <div class="status" id="status">Загрузка...</div>
+                </div>
             </div>
 
             <div class="main">
