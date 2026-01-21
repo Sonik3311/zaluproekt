@@ -50,7 +50,7 @@ class PixelBoard:
         return self._color_palette
 
 
-    @lru_cache(maxsize=128)
+    #@lru_cache(maxsize=128)
     def get_pixel_range(self, x: int, y: int, x_end: int, y_end: int, asdictionary: bool = False) -> list[Pixel]:
         pixels: list[Pixel] = []
         for i in range(x, x_end):
@@ -81,6 +81,7 @@ class PixelBoard:
         color = self.get_color(color_id)
         self._board[i].color = color
         self._board_changes.append(Pixel(x=x, y=y, color=color))
+        print("I:",i ,"color:",color,"color_id:",color_id)
 
     def get_changes(self) -> list[Pixel]:
         return self._board_changes

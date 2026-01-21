@@ -13,8 +13,18 @@ const API_URLS = {
 
 // Резервная палитра на 12 цветов (используется если сервер недоступен)
 const FALLBACK_PALETTE = [
-  "#ff6b6b", "#ff9e6d", "#ffcc5c", "#a8e6cf", "#4ecdc4", "#45b7d1",
-  "#96ceb4", "#588157", "#3a5a40", "#344e41", "#9a8c98", "#4a4e69"
+  "#ff6b6b",
+  "#ff9e6d",
+  "#ffcc5c",
+  "#a8e6cf",
+  "#4ecdc4",
+  "#45b7d1",
+  "#96ceb4",
+  "#588157",
+  "#3a5a40",
+  "#344e41",
+  "#9a8c98",
+  "#4a4e69",
 ];
 
 // Размеры будем получать с сервера
@@ -70,31 +80,30 @@ async function init() {
       // Сервер доступен - используем его настройки
       LOGICAL_WIDTH = serverSettings.board_size.x;
       LOGICAL_HEIGHT = serverSettings.board_size.y;
-      
+
       // Берем первые 12 цветов с сервера
       const allColors = serverSettings.palette.colors;
       const colorsToUse = allColors.slice(0, 12);
-      colorPalette = colorsToUse.map((colorObj) => 
-        numberToHexColor(colorObj.hex)
+      colorPalette = colorsToUse.map((colorObj) =>
+        numberToHexColor(colorObj.hex),
       );
-      
+
       statusEl.textContent = "Сервер онлайн";
       console.log("Используем палитру с сервера:", colorPalette);
-      
+
       // Пробуем загрузить пиксели
       try {
         await loadAllPixels();
       } catch (pixelError) {
         console.log("Не удалось загрузить пиксели, продолжаем без них");
       }
-      
+
       // Пробуем подключиться к SSE
       try {
         connectToStream();
       } catch (sseError) {
         console.log("SSE недоступен");
       }
-      
     } else {
       // Сервер недоступен - используем локальные данные
       LOGICAL_WIDTH = 2500;
@@ -113,7 +122,6 @@ async function init() {
 
     console.log("Размер доски:", LOGICAL_WIDTH, "x", LOGICAL_HEIGHT);
     console.log("Палитра (12 цветов):", colorPalette);
-
   } catch (error) {
     console.error("Ошибка при инициализации:", error);
     statusEl.textContent = "Ошибка загрузки";
@@ -128,11 +136,11 @@ async function init() {
 async function fetchWithTimeout(url, timeout = 5000) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
-  
+
   try {
     const response = await fetch(url, { signal: controller.signal });
     clearTimeout(timeoutId);
-    
+
     if (!response.ok) {
       throw new Error(`Ошибка HTTP: ${response.status}`);
     }
@@ -157,14 +165,14 @@ function numberToHexColor(number) {
    =========================== */
 async function loadAllPixels() {
   if (!isServerOnline) return;
-  
+
   try {
     statusEl.textContent = "Загрузка пикселей...";
 
     // Запрашиваем всю доску
     const pixelsData = await fetchWithTimeout(
       API_URLS.GET_PIXELS(0, 0, LOGICAL_WIDTH - 1, LOGICAL_HEIGHT - 1),
-      10000
+      10000,
     );
 
     // Очищаем текущие пиксели
@@ -185,7 +193,6 @@ async function loadAllPixels() {
     needsRedraw = true;
     console.log("Загружено пикселей:", pixels.size);
     statusEl.textContent = "Сервер онлайн";
-
   } catch (error) {
     console.error("Ошибка при загрузке пикселей:", error);
     statusEl.textContent = "Сервер онлайн (пиксели не загружены)";
@@ -211,13 +218,13 @@ function rebuildPalette() {
 
     const swatch = document.createElement("div");
     swatch.className = "swatch";
-    swatch.style.left = (x - 10) + "px";
-    swatch.style.top = (y - 10) + "px";
+    swatch.style.left = x - 10 + "px";
+    swatch.style.top = y - 10 + "px";
     swatch.style.background = color;
-    
+
     // Номер цвета (1-12)
     swatch.textContent = index + 1;
-    
+
     // Подсказка при наведении
     let titleText = `Цвет ${index + 1}: ${color}\nКлик: выбрать/отменить`;
     if (!isServerOnline) {
@@ -257,7 +264,8 @@ function updateUI() {
 
   // Выделяем выбранный цвет (если есть)
   if (currentColorIndex !== null) {
-    const selectedSwatch = document.querySelectorAll(".swatch")[currentColorIndex];
+    const selectedSwatch =
+      document.querySelectorAll(".swatch")[currentColorIndex];
     if (selectedSwatch) {
       selectedSwatch.classList.add("selected");
     }
@@ -266,11 +274,13 @@ function updateUI() {
 
 function updateHint() {
   if (!hintText) return;
-  
+
   if (!isServerOnline) {
-    hintText.textContent = "Сервер недоступен. Можно только просматривать и выбирать цвета.";
+    hintText.textContent =
+      "Сервер недоступен. Можно только просматривать и выбирать цвета.";
   } else if (currentColorIndex === null) {
-    hintText.textContent = "Колесо — зум, перетаскивать — пан. Выберите цвет для закрашивания";
+    hintText.textContent =
+      "Колесо — зум, перетаскивать — пан. Выберите цвет для закрашивания";
   } else {
     const colorName = colorPalette[currentColorIndex];
     hintText.textContent = `Колесо — зум, перетаскивать — пан. Выбран цвет ${currentColorIndex + 1} (${colorName}) — клик для отмены`;
@@ -282,7 +292,7 @@ function updateHint() {
    =========================== */
 function connectToStream() {
   if (!isServerOnline) return;
-  
+
   try {
     eventSource = new EventSource(API_URLS.STREAM);
 
@@ -331,7 +341,7 @@ async function sendSetPixel(x, y, colorIndex) {
     alert("Сервер недоступен. Невозможно закрасить пиксель.");
     return;
   }
-  
+
   try {
     const response = await fetch(API_URLS.COLOR_PIXEL, {
       method: "POST",
@@ -353,7 +363,6 @@ async function sendSetPixel(x, y, colorIndex) {
     }
 
     console.log(`Пиксель [${x},${y}] закрашен цветом ${colorIndex}`);
-
   } catch (error) {
     console.error("Ошибка при обновлении пикселя:", error);
     alert(`Ошибка: ${error.message}`);
